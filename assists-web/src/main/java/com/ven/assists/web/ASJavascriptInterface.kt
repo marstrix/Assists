@@ -118,10 +118,12 @@ class ASJavascriptInterface(val webView: WebView) {
                 CallMethod.keepScreenOn -> {
                     val tip = request.arguments?.get("tip")?.asString ?: ""
                     AssistsCore.keepScreenOn(tip)
+                    result = GsonUtils.toJson(CallResponse<Boolean>(code = 0, data = true))
                 }
 
                 CallMethod.clearKeepScreenOn -> {
                     AssistsCore.clearKeepScreenOn()
+                    result = GsonUtils.toJson(CallResponse<Boolean>(code = 0, data = true))
                 }
 
                 CallMethod.getClipboardLatestText -> {
@@ -146,9 +148,7 @@ class ASJavascriptInterface(val webView: WebView) {
                 CallMethod.isAppInstalled -> {
                     val packageName = request.arguments?.get("packageName")?.asString ?: ""
                     val appInstalled = AppUtils.isAppInstalled(packageName)
-                    result = GsonUtils.toJson(CallResponse<JsonObject>(code = 0, data = JsonObject().apply {
-                        addProperty("appInstalled", appInstalled)
-                    }))
+                    result = GsonUtils.toJson(CallResponse<Boolean>(code = if (appInstalled) 0 else -1, data = appInstalled))
                 }
 
                 CallMethod.getNetworkType -> {
@@ -172,10 +172,12 @@ class ASJavascriptInterface(val webView: WebView) {
                             callback(CallResponse(code = 0, data = data, callbackId = request.callbackId))
                         }.onFailure {
                             LogUtils.e(it)
-                            callback(CallResponse(code = 0, data = JsonObject(), callbackId = request.callbackId))
+                            callback(CallResponse(code = -1, data = JsonObject(), callbackId = request.callbackId, message = it.message))
                         }
                     }
-                    result = GsonUtils.toJson(CallResponse<JsonObject>(code = 0, data = JsonObject()))
+                    result = GsonUtils.toJson(CallResponse<JsonObject>(code = 0, data = JsonObject().apply {
+                        addProperty("resultType", "callback")
+                    }))
                 }
 
                 CallMethod.getDeviceInfo -> {
@@ -216,36 +218,32 @@ class ASJavascriptInterface(val webView: WebView) {
                             callback(CallResponse(code = 0, data = data, callbackId = request.callbackId))
                         }.onFailure {
                             LogUtils.e(it)
-                            callback(CallResponse(code = 0, data = JsonObject(), callbackId = request.callbackId))
+                            callback(CallResponse(code = -1, data = JsonObject(), callbackId = request.callbackId, message = it.message))
                         }
                     }
 
 
-                    result = GsonUtils.toJson(CallResponse<JsonObject>(code = 0, data = JsonObject()))
+                    result = GsonUtils.toJson(CallResponse<JsonObject>(code = 0, data = JsonObject().apply {
+                        addProperty("resultType", "callback")
+                    }))
 
                 }
 
                 CallMethod.getUniqueDeviceId -> {
                     val uniqueDeviceId = DeviceUtils.getUniqueDeviceId()
-                    result = GsonUtils.toJson(CallResponse<JsonObject>(code = 0, data = JsonObject().apply {
-                        addProperty("uniqueDeviceId", uniqueDeviceId)
-                    }))
+                    result = GsonUtils.toJson(CallResponse<String>(code = 0, data = uniqueDeviceId))
                 }
 
                 CallMethod.getAndroidID -> {
                     val androidID = DeviceUtils.getAndroidID()
-                    result = GsonUtils.toJson(CallResponse<JsonObject>(code = 0, data = JsonObject().apply {
-                        addProperty("androidID", androidID)
-                    }))
+                    result = GsonUtils.toJson(CallResponse<String>(code = 0, data = androidID))
                 }
 
                 CallMethod.getMacAddress -> {
                     CoroutineWrapper.launch {
                         runCatching {
                             val macAddress = DeviceUtils.getMacAddress()
-                            callback(CallResponse(code = 0, data = JsonObject().apply {
-                                addProperty("macAddress", macAddress)
-                            }, callbackId = request.callbackId))
+                            callback(CallResponse(code = 0, data = macAddress, callbackId = request.callbackId))
                         }.onFailure {
                             callback(CallResponse(code = -1, data = JsonObject(), callbackId = request.callbackId, message = it.message))
                         }
@@ -306,7 +304,7 @@ class ASJavascriptInterface(val webView: WebView) {
                             val appInfo = AppUtils.getAppInfo(packageName)
                             callback(CallResponse(code = 0, data = appInfo, callbackId = request.callbackId))
                         }.onFailure {
-                            callback(CallResponse(code = 0, data = JsonObject(), callbackId = request.callbackId))
+                            callback(CallResponse(code = -1, data = JsonObject(), callbackId = request.callbackId, message = it.message))
                         }
                     }
                     result = GsonUtils.toJson(CallResponse<JsonObject>(code = 0, data = JsonObject().apply {
@@ -357,9 +355,25 @@ class ASJavascriptInterface(val webView: WebView) {
                         AssistsWindowManager.hideAll()
                         val scanIntentResult = CustomFileProvider.requestLaunchersScan(ScanOptions())
                         AssistsWindowManager.showTop()
-                        callback(CallResponse<JsonObject>(code = 0, data = JsonObject().apply {
-                            addProperty("value", scanIntentResult?.contents ?: "")
-                        }, callbackId = request.callbackId))
+                        val value = scanIntentResult?.contents
+                        if (value == null) {
+                            callback(
+                                CallResponse<JsonObject>(
+                                    code = -1,
+                                    data = JsonObject().apply { addProperty("value", "") },
+                                    callbackId = request.callbackId,
+                                    message = "Scan cancelled"
+                                )
+                            )
+                        } else {
+                            callback(
+                                CallResponse<JsonObject>(
+                                    code = 0,
+                                    data = JsonObject().apply { addProperty("value", value) },
+                                    callbackId = request.callbackId
+                                )
+                            )
+                        }
                     }
 
                     result = GsonUtils.toJson(CallResponse<JsonObject>(code = 0, data = JsonObject().apply {
@@ -373,8 +387,15 @@ class ASJavascriptInterface(val webView: WebView) {
                         get("flags")?.asJsonArray?.forEach {
                             flagList.add(it.asInt)
                         }
-                        val flags = flagList.reduce { a, b -> a or b }
-                        CoroutineWrapper.launch { AssistsWindowManager.setFlags(flags) }
+                        if (flagList.isNotEmpty()) {
+                            val flags = flagList.reduce { a, b -> a or b }
+                            CoroutineWrapper.launch { AssistsWindowManager.setFlags(flags) }
+                            result = GsonUtils.toJson(CallResponse<Boolean>(code = 0, data = true))
+                        } else {
+                            result = GsonUtils.toJson(CallResponse<Boolean>(code = -1, data = false, message = "flags required"))
+                        }
+                    } ?: run {
+                        result = GsonUtils.toJson(CallResponse<Boolean>(code = -1, data = false, message = "flags required"))
                     }
                 }
 
@@ -404,21 +425,27 @@ class ASJavascriptInterface(val webView: WebView) {
 
                 CallMethod.performLinearGesture -> {
                     CoroutineWrapper.launch {
-                        val startPoint = request.arguments?.get("startPoint")?.asJsonObject ?: JsonObject()
-                        val endPoint = request.arguments?.get("endPoint")?.asJsonObject ?: JsonObject()
-                        val path = Path()
-                        path.moveTo(startPoint.get("x").asFloat, startPoint.get("y").asFloat)
-                        path.lineTo(endPoint.get("x").asFloat, endPoint.get("y").asFloat)
-                        val switchWindowIntervalDelay = request.arguments?.get("switchWindowIntervalDelay")?.asLong ?: 250
-                        AssistsWindowManager.nonTouchableByAll()
-                        delay(switchWindowIntervalDelay)
-                        val result =
-                            AssistsCore.gesture(path = path, startTime = 0, duration = request.arguments?.get("duration")?.asLong ?: 1000)
-                        AssistsWindowManager.touchableByAll()
-                        if (result) {
-                            callback(CallResponse<Boolean>(code = 0, data = true, callbackId = request.callbackId))
-                        } else {
-                            callback(CallResponse<Boolean>(code = -1, data = false, callbackId = request.callbackId))
+                        try {
+                            val startPoint = request.arguments?.get("startPoint")?.asJsonObject ?: JsonObject()
+                            val endPoint = request.arguments?.get("endPoint")?.asJsonObject ?: JsonObject()
+                            val path = Path()
+                            path.moveTo(startPoint.get("x").asFloat, startPoint.get("y").asFloat)
+                            path.lineTo(endPoint.get("x").asFloat, endPoint.get("y").asFloat)
+                            val switchWindowIntervalDelay = request.arguments?.get("switchWindowIntervalDelay")?.asLong ?: 250
+                            AssistsWindowManager.nonTouchableByAll()
+                            delay(switchWindowIntervalDelay)
+                            val result =
+                                AssistsCore.gesture(path = path, startTime = 0, duration = request.arguments?.get("duration")?.asLong ?: 1000)
+                            AssistsWindowManager.touchableByAll()
+                            if (result) {
+                                callback(CallResponse<Boolean>(code = 0, data = true, callbackId = request.callbackId))
+                            } else {
+                                callback(CallResponse<Boolean>(code = -1, data = false, callbackId = request.callbackId))
+                            }
+                        } catch (e: Exception) {
+                            LogUtils.e("performLinearGesture error: ${e.message}")
+                            AssistsWindowManager.touchableByAll()
+                            callback(CallResponse<Boolean>(code = -1, data = false, message = e.message, callbackId = request.callbackId))
                         }
                     }
                     result = GsonUtils.toJson(CallResponse<JsonObject>(code = 0, data = JsonObject().apply {
@@ -428,7 +455,11 @@ class ASJavascriptInterface(val webView: WebView) {
 
                 CallMethod.getAppScreenSize -> {
                     val bounds = AssistsCore.getAppBoundsInScreen()?.toBounds()
-                    result = GsonUtils.toJson(CallResponse<Node.Bounds>(code = 0, data = bounds))
+                    result = if (bounds == null) {
+                        GsonUtils.toJson(CallResponse<Node.Bounds?>(code = -1, data = null, message = "App bounds unavailable"))
+                    } else {
+                        GsonUtils.toJson(CallResponse<Node.Bounds>(code = 0, data = bounds))
+                    }
                 }
 
                 CallMethod.getScreenSize -> {
@@ -440,42 +471,57 @@ class ASJavascriptInterface(val webView: WebView) {
 
                 CallMethod.clickByGesture -> {
                     CoroutineWrapper.launch {
-                        val switchWindowIntervalDelay = request.arguments?.get("switchWindowIntervalDelay")?.asLong ?: 250
-                        val duration = request.arguments?.get("duration")?.asLong ?: 25
-                        AssistsWindowManager.nonTouchableByAll()
-                        delay(switchWindowIntervalDelay)
-                        val result =
-                            AssistsCore.gestureClick(
-                                x = request.arguments?.get("x")?.asFloat ?: 0f,
-                                y = request.arguments?.get("y")?.asFloat ?: 0f,
-                                duration = duration
-                            )
-                        AssistsWindowManager.touchableByAll()
-                        if (result) {
-                            callback(CallResponse<Boolean>(code = 0, data = true, callbackId = request.callbackId))
-                        } else {
-                            callback(CallResponse<Boolean>(code = -1, data = false, callbackId = request.callbackId))
+                        try {
+                            val switchWindowIntervalDelay = request.arguments?.get("switchWindowIntervalDelay")?.asLong ?: 250
+                            val duration = request.arguments?.get("duration")?.asLong
+                                ?: request.arguments?.get("clickDuration")?.asLong
+                                ?: 25
+                            AssistsWindowManager.nonTouchableByAll()
+                            delay(switchWindowIntervalDelay)
+                            val result =
+                                AssistsCore.gestureClick(
+                                    x = request.arguments?.get("x")?.asFloat ?: 0f,
+                                    y = request.arguments?.get("y")?.asFloat ?: 0f,
+                                    duration = duration
+                                )
+                            AssistsWindowManager.touchableByAll()
+                            if (result) {
+                                callback(CallResponse<Boolean>(code = 0, data = true, callbackId = request.callbackId))
+                            } else {
+                                callback(CallResponse<Boolean>(code = -1, data = false, callbackId = request.callbackId))
+                            }
+                        } catch (e: Exception) {
+                            LogUtils.e("clickByGesture error: ${e.message}")
+                            AssistsWindowManager.touchableByAll()
+                            callback(CallResponse<Boolean>(code = -1, data = false, message = e.message, callbackId = request.callbackId))
                         }
                     }
-                    result = GsonUtils.toJson(CallResponse<Boolean>(code = 0, data = true))
+                    result = GsonUtils.toJson(CallResponse<JsonObject>(code = 0, data = JsonObject().apply {
+                        addProperty("resultType", "callback")
+                    }))
                 }
 
                 CallMethod.clickNodeByGesture -> {
                     CoroutineWrapper.launch {
-                        val offsetX = request.arguments?.get("offsetX")?.asFloat ?: (ScreenUtils.getScreenWidth() * 0.01953f)
-                        val offsetY = request.arguments?.get("offsetY")?.asFloat ?: (ScreenUtils.getScreenWidth() * 0.01953f)
-                        val switchWindowIntervalDelay = request.arguments?.get("switchWindowIntervalDelay")?.asLong ?: 250
-                        val clickDuration = request.arguments?.get("clickDuration")?.asLong ?: 25
-                        val result = NodeCacheManager.get(request.node?.nodeId ?: "")?.nodeGestureClick(
-                            offsetX = offsetX,
-                            offsetY = offsetY,
-                            switchWindowIntervalDelay = switchWindowIntervalDelay,
-                            duration = clickDuration
-                        ) ?: false
-                        if (result) {
-                            callback(CallResponse<Boolean>(code = 0, data = true, callbackId = request.callbackId))
-                        } else {
-                            callback(CallResponse<Boolean>(code = -1, data = false, callbackId = request.callbackId))
+                        try {
+                            val offsetX = request.arguments?.get("offsetX")?.asFloat ?: (ScreenUtils.getScreenWidth() * 0.01953f)
+                            val offsetY = request.arguments?.get("offsetY")?.asFloat ?: (ScreenUtils.getScreenWidth() * 0.01953f)
+                            val switchWindowIntervalDelay = request.arguments?.get("switchWindowIntervalDelay")?.asLong ?: 250
+                            val clickDuration = request.arguments?.get("clickDuration")?.asLong ?: 25
+                            val result = NodeCacheManager.get(request.node?.nodeId ?: "")?.nodeGestureClick(
+                                offsetX = offsetX,
+                                offsetY = offsetY,
+                                switchWindowIntervalDelay = switchWindowIntervalDelay,
+                                duration = clickDuration
+                            ) ?: false
+                            if (result) {
+                                callback(CallResponse<Boolean>(code = 0, data = true, callbackId = request.callbackId))
+                            } else {
+                                callback(CallResponse<Boolean>(code = -1, data = false, callbackId = request.callbackId))
+                            }
+                        } catch (e: Exception) {
+                            LogUtils.e("clickNodeByGesture error: ${e.message}")
+                            callback(CallResponse<Boolean>(code = -1, data = false, message = e.message, callbackId = request.callbackId))
                         }
                     }
                     result = GsonUtils.toJson(CallResponse<JsonObject>(code = 0, data = JsonObject().apply {
@@ -499,12 +545,12 @@ class ASJavascriptInterface(val webView: WebView) {
                             val x = (bounds?.centerX()?.toFloat() ?: 0f) + offsetX
                             val y = (bounds?.centerY()?.toFloat() ?: 0f) + offsetY
 
-                            AssistsCore.gestureClick(x, y, clickDuration)
+                            val first = AssistsCore.gestureClick(x, y, clickDuration)
                             delay(clickInterval)
-                            AssistsCore.gestureClick(x, y, clickDuration)
+                            val second = AssistsCore.gestureClick(x, y, clickDuration)
                             AssistsWindowManager.touchableByAll()
-
-                            callback(CallResponse<Boolean>(code = 0, data = true, callbackId = request.callbackId))
+                            val ok = first && second
+                            callback(CallResponse<Boolean>(code = if (ok) 0 else -1, data = ok, callbackId = request.callbackId))
                         }.onFailure {
                             callback(CallResponse<Boolean>(code = -1, data = false, callbackId = request.callbackId))
                         }
@@ -520,14 +566,22 @@ class ASJavascriptInterface(val webView: WebView) {
 
                     val bounds = NodeCacheManager.get(request.node?.nodeId ?: "")?.getBoundsInParent()?.toBounds()
 
-                    result = GsonUtils.toJson(CallResponse<Node.Bounds>(code = 0, data = bounds))
+                    result = if (bounds == null) {
+                        GsonUtils.toJson(CallResponse<Node.Bounds?>(code = -1, data = null, message = "Node not found"))
+                    } else {
+                        GsonUtils.toJson(CallResponse<Node.Bounds>(code = 0, data = bounds))
+                    }
                 }
 
                 CallMethod.getBoundsInScreen -> {
 
                     val bounds = NodeCacheManager.get(request.node?.nodeId ?: "")?.getBoundsInScreen()?.toBounds()
 
-                    result = GsonUtils.toJson(CallResponse<Node.Bounds>(code = 0, data = bounds))
+                    result = if (bounds == null) {
+                        GsonUtils.toJson(CallResponse<Node.Bounds?>(code = -1, data = null, message = "Node not found"))
+                    } else {
+                        GsonUtils.toJson(CallResponse<Node.Bounds>(code = 0, data = bounds))
+                    }
                 }
 
                 CallMethod.isVisible -> {
@@ -572,21 +626,29 @@ class ASJavascriptInterface(val webView: WebView) {
 
                         return@letRoot node.isVisibleToUser
                     }
-                    result = GsonUtils.toJson(CallResponse<Boolean>(code = 0, data = value))
+                    result = if (value == null) {
+                        GsonUtils.toJson(CallResponse<Boolean>(code = -1, data = false, message = "Node not found"))
+                    } else {
+                        GsonUtils.toJson(CallResponse<Boolean>(code = if (value) 0 else -1, data = value))
+                    }
 
                 }
 
                 CallMethod.getAllText -> {
-
-                    val texts = NodeCacheManager.get(request.node?.nodeId ?: "")?.getAllText()
-
+                    val nodeId = request.node?.nodeId ?: ""
+                    val texts = if (nodeId.isEmpty()) {
+                        val scope = NodeLookupScopeParse.fromArguments(request.arguments)
+                        val collected = arrayListOf<String>()
+                        AssistsCore.getAllNodes(scope = scope).forEach { collected.addAll(it.getAllText()) }
+                        collected
+                    } else {
+                        NodeCacheManager.get(nodeId)?.getAllText() ?: arrayListOf()
+                    }
                     result = GsonUtils.toJson(CallResponse<List<String>>(code = 0, data = texts))
                 }
 
                 CallMethod.getChildren -> {
-
-                    val nodes = NodeCacheManager.get(request.node?.nodeId ?: "")?.getChildren()?.toNodes()
-
+                    val nodes = NodeCacheManager.get(request.node?.nodeId ?: "")?.getChildren()?.toNodes() ?: emptyList()
                     result = GsonUtils.toJson(CallResponse<List<Node>>(code = 0, data = nodes))
                 }
 
@@ -675,17 +737,17 @@ class ASJavascriptInterface(val webView: WebView) {
                     val selectionStart = request.arguments?.get("selectionStart")?.asInt ?: 0
                     val selectionEnd = request.arguments?.get("selectionEnd")?.asInt ?: 0
                     val isSuccess = NodeCacheManager.get(request.node?.nodeId ?: "")?.selectionText(selectionStart, selectionEnd) == true
-                    result = GsonUtils.toJson(CallResponse<Boolean>(code = 0, data = isSuccess))
+                    result = GsonUtils.toJson(CallResponse<Boolean>(code = if (isSuccess) 0 else -1, data = isSuccess))
                 }
 
                 CallMethod.scrollForward -> {
                     val isSuccess = NodeCacheManager.get(request.node?.nodeId ?: "")?.scrollForward() == true
-                    result = GsonUtils.toJson(CallResponse<Boolean>(code = 0, data = isSuccess))
+                    result = GsonUtils.toJson(CallResponse<Boolean>(code = if (isSuccess) 0 else -1, data = isSuccess))
                 }
 
                 CallMethod.scrollBackward -> {
                     val isSuccess = NodeCacheManager.get(request.node?.nodeId ?: "")?.scrollBackward() == true
-                    result = GsonUtils.toJson(CallResponse<Boolean>(code = 0, data = isSuccess))
+                    result = GsonUtils.toJson(CallResponse<Boolean>(code = if (isSuccess) 0 else -1, data = isSuccess))
                 }
 
                 CallMethod.findByTextAllMatch -> {
@@ -698,9 +760,15 @@ class ASJavascriptInterface(val webView: WebView) {
                 }
 
                 CallMethod.containsText -> {
-                    val isSuccess =
-                        NodeCacheManager.get(request.node?.nodeId ?: "")?.containsText(request.arguments?.get("text")?.asString ?: "") == true
-                    result = GsonUtils.toJson(CallResponse<Boolean>(code = 0, data = isSuccess))
+                    val textArg = request.arguments?.get("text")?.asString ?: ""
+                    val nodeId = request.node?.nodeId ?: ""
+                    val isSuccess = if (nodeId.isEmpty()) {
+                        val scope = NodeLookupScopeParse.fromArguments(request.arguments)
+                        AssistsCore.findByText(textArg, scope = scope).isNotEmpty()
+                    } else {
+                        NodeCacheManager.get(nodeId)?.containsText(textArg) == true
+                    }
+                    result = GsonUtils.toJson(CallResponse<Boolean>(code = if (isSuccess) 0 else -1, data = isSuccess))
                 }
 
                 CallMethod.findFirstParentByTags -> {
@@ -713,7 +781,7 @@ class ASJavascriptInterface(val webView: WebView) {
                 CallMethod.getNodes -> {
                     val nodes =
                         NodeCacheManager.get(request.node?.nodeId ?: "")?.getNodes()
-                            ?.toNodes()
+                            ?.toNodes() ?: emptyList()
                     result = GsonUtils.toJson(CallResponse<List<Node>>(code = 0, data = nodes))
                 }
 
@@ -728,34 +796,39 @@ class ASJavascriptInterface(val webView: WebView) {
                 CallMethod.setNodeText -> {
                     val isSuccess =
                         NodeCacheManager.get(request.node?.nodeId ?: "")?.setNodeText(request.arguments?.get("text")?.asString ?: "") == true
-                    result = GsonUtils.toJson(CallResponse<Boolean>(code = 0, data = isSuccess))
+                    result = GsonUtils.toJson(CallResponse<Boolean>(code = if (isSuccess) 0 else -1, data = isSuccess))
                 }
 
                 CallMethod.click -> {
                     val isSuccess = NodeCacheManager.get(request.node?.nodeId ?: "")?.click() == true
-                    result = GsonUtils.toJson(CallResponse<Boolean>(code = 0, data = isSuccess))
+                    result = GsonUtils.toJson(CallResponse<Boolean>(code = if (isSuccess) 0 else -1, data = isSuccess))
                 }
 
                 CallMethod.longClick -> {
                     val isSuccess = NodeCacheManager.get(request.node?.nodeId ?: "")?.longClick() == true
-                    result = GsonUtils.toJson(CallResponse<Boolean>(code = 0, data = isSuccess))
+                    result = GsonUtils.toJson(CallResponse<Boolean>(code = if (isSuccess) 0 else -1, data = isSuccess))
                 }
 
                 CallMethod.paste -> {
                     val isSuccess = NodeCacheManager.get(request.node?.nodeId ?: "")?.paste(request.arguments?.get("text")?.asString ?: "") == true
-                    result = GsonUtils.toJson(CallResponse<Boolean>(code = 0, data = isSuccess))
+                    result = GsonUtils.toJson(CallResponse<Boolean>(code = if (isSuccess) 0 else -1, data = isSuccess))
                 }
 
                 CallMethod.focus -> {
                     val isSuccess = NodeCacheManager.get(request.node?.nodeId ?: "")?.focus() == true
-                    result = GsonUtils.toJson(CallResponse<Boolean>(code = 0, data = isSuccess))
+                    result = GsonUtils.toJson(CallResponse<Boolean>(code = if (isSuccess) 0 else -1, data = isSuccess))
                 }
 
                 //其他方法
                 CallMethod.launchApp -> {
                     val packageName = request.arguments?.get("packageName")?.asString ?: ""
-                    CoroutineWrapper.launch { AssistsCore.launchApp(packageName) }
-                    result = GsonUtils.toJson(CallResponse<Boolean>(code = 0, data = true))
+                    CoroutineWrapper.launch {
+                        val ok = AssistsCore.launchApp(packageName)
+                        callback(CallResponse(code = if (ok) 0 else -1, data = ok, callbackId = request.callbackId))
+                    }
+                    result = GsonUtils.toJson(CallResponse<JsonObject>(code = 0, data = JsonObject().apply {
+                        addProperty("resultType", "callback")
+                    }))
                 }
 
                 CallMethod.getPackageName -> {
@@ -773,22 +846,22 @@ class ASJavascriptInterface(val webView: WebView) {
 
                 CallMethod.back -> {
                     val resultBack = AssistsCore.back()
-                    result = GsonUtils.toJson(CallResponse<Boolean>(code = 0, data = resultBack))
+                    result = GsonUtils.toJson(CallResponse<Boolean>(code = if (resultBack) 0 else -1, data = resultBack))
                 }
 
                 CallMethod.home -> {
                     val resultBack = AssistsCore.home()
-                    result = GsonUtils.toJson(CallResponse<Boolean>(code = 0, data = resultBack))
+                    result = GsonUtils.toJson(CallResponse<Boolean>(code = if (resultBack) 0 else -1, data = resultBack))
                 }
 
                 CallMethod.notifications -> {
                     val resultBack = AssistsCore.notifications()
-                    result = GsonUtils.toJson(CallResponse<Boolean>(code = 0, data = resultBack))
+                    result = GsonUtils.toJson(CallResponse<Boolean>(code = if (resultBack) 0 else -1, data = resultBack))
                 }
 
                 CallMethod.recentApps -> {
                     val resultBack = AssistsCore.recentApps()
-                    result = GsonUtils.toJson(CallResponse<Boolean>(code = 0, data = resultBack))
+                    result = GsonUtils.toJson(CallResponse<Boolean>(code = if (resultBack) 0 else -1, data = resultBack))
                 }
 
                 CallMethod.httpRequest -> {
@@ -875,12 +948,23 @@ class ASJavascriptInterface(val webView: WebView) {
                                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                             }
                             JavascriptInterfaceContext.getContext()?.startActivity(intent)
+                            callback(CallResponse(code = 0, data = true, callbackId = request.callbackId))
                         } catch (e: Exception) {
                             LogUtils.e(e)
                             "打开外部浏览器失败：${e.message}".overlayToast()
+                            callback(
+                                CallResponse(
+                                    code = -1,
+                                    data = false,
+                                    callbackId = request.callbackId,
+                                    message = e.message
+                                )
+                            )
                         }
                     }
-                    result = GsonUtils.toJson(CallResponse<Boolean>(code = 0, message = "", data = false))
+                    result = GsonUtils.toJson(CallResponse<JsonObject>(code = 0, data = JsonObject().apply {
+                        addProperty("resultType", "callback")
+                    }))
                 }
 
                 CallMethod.audioPlayRingtone -> {
@@ -888,9 +972,9 @@ class ASJavascriptInterface(val webView: WebView) {
                         runCatching {
                             JavascriptInterfaceContext.getContext()?.let {
                                 AudioPlayManager.startAudioPlay(it)
-                                callback(CallResponse(code = 0, data = "开始播放系统电话铃声", callbackId = request.callbackId))
+                                callback(CallResponse(code = 0, data = true, callbackId = request.callbackId, message = "开始播放系统电话铃声"))
                             } ?: let {
-                                callback(CallResponse(code = -1, data = "上下文无效", callbackId = request.callbackId))
+                                callback(CallResponse(code = -1, data = false, callbackId = request.callbackId, message = "上下文无效"))
                             }
                         }.onFailure {
                             LogUtils.e(it)
@@ -906,7 +990,7 @@ class ASJavascriptInterface(val webView: WebView) {
                     CoroutineWrapper.launch(isMain = true) {
                         runCatching {
                             AudioPlayManager.stopAudioPlay()
-                            callback(CallResponse(code = 0, data = "已停止播放", callbackId = request.callbackId))
+                            callback(CallResponse(code = 0, data = true, callbackId = request.callbackId, message = "已停止播放"))
                         }.onFailure {
                             LogUtils.e(it)
                             callback(CallResponse(code = -1, message = "停止失败: ${it.message}", data = false, callbackId = request.callbackId))

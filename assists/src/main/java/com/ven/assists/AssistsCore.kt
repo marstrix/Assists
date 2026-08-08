@@ -733,11 +733,13 @@ object AssistsCore {
 
             val gestureResultCallback = object : AccessibilityService.GestureResultCallback() {
                 override fun onCompleted(gestureDescription: GestureDescription?) {
+                    LogUtils.i("[GestureDiag] dispatchGesture onCompleted service=${AssistsService.getOrNull() != null}")
                     CoroutineWrapper.launch { AssistsWindowManager.touchableByAll() }
                     completableDeferred.complete(true)
                 }
 
                 override fun onCancelled(gestureDescription: GestureDescription?) {
+                    LogUtils.w("[GestureDiag] dispatchGesture onCancelled service=${AssistsService.getOrNull() != null}")
                     CoroutineWrapper.launch { AssistsWindowManager.touchableByAll() }
                     completableDeferred.complete(false)
                 }
@@ -745,11 +747,16 @@ object AssistsCore {
             val runResult = AssistsService.getOrNull()?.let {
                 AssistsWindowManager.nonTouchableByAll()
                 delay(nonTouchableWindowDelay)
+                LogUtils.i("[GestureDiag] dispatchGesture call")
                 runMain { it.dispatchGesture(gesture, gestureResultCallback, null) }
             } ?: let {
+                LogUtils.e("[GestureDiag] dispatchGesture skipped: AssistsService is null")
                 return false
             }
-            if (!runResult) return false
+            if (!runResult) {
+                LogUtils.w("[GestureDiag] dispatchGesture returned false (not accepted)")
+                return false
+            }
             return@runCatching completableDeferred.await()
         }.getOrDefault(false)
 
@@ -797,19 +804,30 @@ object AssistsCore {
             val gestureDescription = builder.addStroke(strokeDescription).build()
             val deferred = CompletableDeferred<Boolean>()
             val runResult = runMain {
-                return@runMain AssistsService.getOrNull()?.dispatchGesture(gestureDescription, object : AccessibilityService.GestureResultCallback() {
+                val svc = AssistsService.getOrNull()
+                LogUtils.i(
+                    "[GestureDiag] gesture(path) dispatch service=${svc != null} " +
+                        "startTime=$startTime duration=$duration",
+                )
+                return@runMain svc?.dispatchGesture(gestureDescription, object : AccessibilityService.GestureResultCallback() {
                     override fun onCompleted(gestureDescription: GestureDescription) {
+                        LogUtils.i("[GestureDiag] gesture(path) onCompleted")
                         deferred.complete(true)
                     }
 
                     override fun onCancelled(gestureDescription: GestureDescription) {
+                        LogUtils.w("[GestureDiag] gesture(path) onCancelled")
                         deferred.complete(false)
                     }
                 }, null) ?: let {
+                    LogUtils.e("[GestureDiag] gesture(path) dispatch skipped: AssistsService is null")
                     return@runMain false
                 }
             }
-            if (!runResult) return false
+            if (!runResult) {
+                LogUtils.w("[GestureDiag] gesture(path) dispatch returned false (not accepted)")
+                return false
+            }
             deferred.await()
         }.getOrDefault(false)
     }
@@ -1237,9 +1255,22 @@ object AssistsCore {
     /**
      * 通过Intent启动应用
      * @param intent 要启动的应用Intent
-     * @return 启动操作是否成功
+     * @return 目标应用是否进入前台
      */
     suspend fun launchApp(intent: Intent): Boolean {
+        val targetPackage = intent.getPackage()?.takeIf { it.isNotEmpty() }
+            ?: intent.component?.packageName
+            ?: ""
+        val startSucceeded = runCatching {
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            AssistsService.getOrNull()?.startActivity(intent) != null
+        }.getOrDefault(false)
+
+        if (startSucceeded) {
+            return waitForForeground(targetPackage)
+        }
+
+        // 部分机型/后台限制下直接启动失败，回退为透明 View + 屏幕中心手势点击触发
         val completableDeferred = CompletableDeferred<Boolean>()
         val view = View(AssistsService.getOrNull()).apply {
             setOnClickListener {
@@ -1255,29 +1286,41 @@ object AssistsCore {
         runMain { AssistsWindowManager.add(view) }
         CoroutineWrapper.launch {
             delay(250)
-            val clickResult = gestureClick(ScreenUtils.getScreenWidth() / 2.toFloat(), ScreenUtils.getScreenHeight() / 2.toFloat())
-            if (!clickResult) {
-                completableDeferred.complete(false)
-            }
+            gestureClick(ScreenUtils.getScreenWidth() / 2.toFloat(), ScreenUtils.getScreenHeight() / 2.toFloat())
             delay(250)
             runMain { AssistsWindowManager.removeView(view) }
         }
-        return completableDeferred.await()
+        // 手势成功与否不决定返回值，以目标是否进入前台为准
+        completableDeferred.await()
+        return waitForForeground(targetPackage)
     }
 
     /**
      * 通过包名启动应用
      * @param packageName 要启动的应用包名
-     * @return 启动操作是否成功
+     * @return 目标应用是否进入前台
      */
     suspend fun launchApp(packageName: String): Boolean {
+        val service = AssistsService.getOrNull() ?: return false
+        val intent = service.packageManager.getLaunchIntentForPackage(packageName) ?: return false
+        val startSucceeded = runCatching {
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            service.startActivity(intent)
+            true
+        }.getOrDefault(false)
+
+        if (startSucceeded) {
+            return waitForForeground(packageName)
+        }
+
+        // 部分机型/后台限制下直接启动失败，回退为透明 View + 屏幕中心手势点击触发
         val completableDeferred = CompletableDeferred<Boolean>()
-        val view = View(AssistsService.getOrNull()).apply {
+        val view = View(service).apply {
             setOnClickListener {
                 runCatching {
-                    val intent = AssistsService.getOrNull()?.packageManager?.getLaunchIntentForPackage(packageName)
-                    intent?.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                    AssistsService.getOrNull()?.startActivity(intent)
+                    val fallbackIntent = service.packageManager.getLaunchIntentForPackage(packageName)
+                    fallbackIntent?.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    service.startActivity(fallbackIntent)
                     completableDeferred.complete(true)
                 }.onFailure {
                     completableDeferred.complete(false)
@@ -1287,14 +1330,36 @@ object AssistsCore {
         runMain { AssistsWindowManager.add(view) }
         CoroutineWrapper.launch {
             delay(250)
-            val clickResult = gestureClick(ScreenUtils.getScreenWidth() / 2.toFloat(), ScreenUtils.getScreenHeight() / 2.toFloat())
-            if (!clickResult) {
-                completableDeferred.complete(false)
-            }
+            gestureClick(ScreenUtils.getScreenWidth() / 2.toFloat(), ScreenUtils.getScreenHeight() / 2.toFloat())
             delay(250)
             runMain { AssistsWindowManager.removeView(view) }
         }
-        return completableDeferred.await()
+        // 手势成功与否不决定返回值，以目标是否进入前台为准
+        completableDeferred.await()
+        return waitForForeground(packageName)
+    }
+
+    /**
+     * 轮询目标包名是否成为前台应用
+     * @param packageName 目标应用包名，空串时不轮询直接返回 true
+     * @param timeoutMs 最长等待时间
+     */
+    private suspend fun waitForForeground(
+        packageName: String,
+        timeoutMs: Long = 5_000L,
+    ): Boolean {
+        if (packageName.isEmpty()) return true
+        val deadline = System.currentTimeMillis() + timeoutMs
+        while (System.currentTimeMillis() < deadline) {
+            val active = getPackageName(NodeLookupScope.ActiveWindow)
+            val all = getPackageName(NodeLookupScope.AllWindows)
+            LogUtils.d("GestureDiag waitForForeground pkg=$packageName active=$active all=$all")
+            if (active == packageName || all == packageName) {
+                return true
+            }
+            delay(200)
+        }
+        return false
     }
 
     /**

@@ -246,6 +246,18 @@ class ASJavascriptInterfaceAsync(val webView: WebView) {
 
                 CallMethod.getClipboardText -> handleGetClipboardText(request)
 
+                CallMethod.getClipboardLatestText -> handleGetClipboardText(request)
+
+                CallMethod.overlayToast -> handleOverlayToast(request)
+
+                CallMethod.isAppInstalled -> handleIsAppInstalled(request)
+
+                CallMethod.keepScreenOn -> handleKeepScreenOn(request)
+
+                CallMethod.clearKeepScreenOn -> handleClearKeepScreenOn(request)
+
+                CallMethod.setOverlayFlags -> handleSetOverlayFlags(request)
+
                 else -> {
                     request.createResponse(-1, message = "方法未支持")
                 }
@@ -259,19 +271,19 @@ class ASJavascriptInterfaceAsync(val webView: WebView) {
 
     private suspend fun handleAudioStop(request: CallRequest<JsonObject>): CallResponse<Any?> {
         AudioPlayerUtil.stop()
-        return request.createResponse(0, data = null)
+        return request.createResponse(0, data = true)
     }
 
     private fun handleAudioPlayRingtone(request: CallRequest<JsonObject>): CallResponse<Any?> {
         return JavascriptInterfaceContext.getContext()?.let {
             AudioPlayManager.startAudioPlay(it)
-            request.createResponse(0, data = "开始播放系统电话铃声")
-        } ?: request.createResponse(-1, data = "上下文无效")
+            request.createResponse(0, data = true, message = "开始播放系统电话铃声")
+        } ?: request.createResponse(-1, data = false, message = "上下文无效")
     }
 
     private fun handleAudioStopRingtone(request: CallRequest<JsonObject>): CallResponse<Any?> {
         AudioPlayManager.stopAudioPlay()
-        return request.createResponse(0, data = "已停止播放")
+        return request.createResponse(0, data = true, message = "已停止播放")
     }
 
     private suspend fun handleAudioPlayFromFile(request: CallRequest<JsonObject>): CallResponse<Any?> {
@@ -295,9 +307,10 @@ class ASJavascriptInterfaceAsync(val webView: WebView) {
             val result = completableDeferred.await()
             request.createResponse(
                 if (result == null) 0 else -1,
-                data = if (result == null) "播放完成" else "播放失败: ${result.message}"
+                data = result == null,
+                message = if (result == null) "播放完成" else "播放失败: ${result.message}"
             )
-        } ?: request.createResponse(-1, data = "无障碍服务无效")
+        } ?: request.createResponse(-1, data = false, message = "无障碍服务无效")
     }
 
     private suspend fun handleDownload(request: CallRequest<JsonObject>): CallResponse<Any?> {
@@ -305,11 +318,15 @@ class ASJavascriptInterfaceAsync(val webView: WebView) {
         return JavascriptInterfaceContext.getContext()?.let {
             val result = FileDownloadUtil.downloadFile(it, url)
             when (result) {
-                is FileDownloadUtil.DownloadResult.Error -> request.createResponse(-1, data = result.exception.message)
+                is FileDownloadUtil.DownloadResult.Error -> request.createResponse(
+                    -1,
+                    data = null,
+                    message = result.exception.message
+                )
                 is FileDownloadUtil.DownloadResult.Success -> request.createResponse(0, data = result.file.path)
                 else -> request.createResponse(-1, data = null)
             }
-        } ?: request.createResponse(-1, data = null)
+        } ?: request.createResponse(-1, data = null, message = "上下文无效")
     }
 
     private fun handleGetNetworkType(request: CallRequest<JsonObject>): CallResponse<Any?> {
@@ -458,24 +475,15 @@ class ASJavascriptInterfaceAsync(val webView: WebView) {
     }
 
     private fun handleGetUniqueDeviceId(request: CallRequest<JsonObject>): CallResponse<Any?> {
-        val uniqueDeviceId = DeviceUtils.getUniqueDeviceId()
-        return request.createResponse(0, data = JsonObject().apply {
-            addProperty("uniqueDeviceId", uniqueDeviceId)
-        })
+        return request.createResponse(0, data = DeviceUtils.getUniqueDeviceId())
     }
 
     private fun handleGetAndroidID(request: CallRequest<JsonObject>): CallResponse<Any?> {
-        val androidID = DeviceUtils.getAndroidID()
-        return request.createResponse(0, data = JsonObject().apply {
-            addProperty("androidID", androidID)
-        })
+        return request.createResponse(0, data = DeviceUtils.getAndroidID())
     }
 
     private fun handleGetMacAddress(request: CallRequest<JsonObject>): CallResponse<Any?> {
-        val macAddress = DeviceUtils.getMacAddress()
-        return request.createResponse(0, data = JsonObject().apply {
-            addProperty("macAddress", macAddress)
-        })
+        return request.createResponse(0, data = DeviceUtils.getMacAddress())
     }
 
     private suspend fun handleLongPressGestureAutoPaste(request: CallRequest<JsonObject>): CallResponse<Any?> {
@@ -517,17 +525,32 @@ class ASJavascriptInterfaceAsync(val webView: WebView) {
 
     private fun handleGetAppInfo(request: CallRequest<JsonObject>): CallResponse<Any?> {
         val packageName = request.arguments?.get("packageName")?.asString ?: ""
-        val appInfo = AppUtils.getAppInfo(packageName)
-        return request.createResponse(0, data = appInfo)
+        return runCatching<CallResponse<Any?>> {
+            val appInfo = AppUtils.getAppInfo(packageName)
+            if (appInfo == null) {
+                request.createResponse(-1, data = JsonObject(), message = "App not found")
+            } else {
+                request.createResponse(0, data = appInfo)
+            }
+        }.getOrElse {
+            request.createResponse(-1, data = JsonObject(), message = it.message)
+        }
     }
 
     private suspend fun handleScanQR(request: CallRequest<JsonObject>): CallResponse<Any?> {
         AssistsWindowManager.hideAll()
         val scanIntentResult = CustomFileProvider.requestLaunchersScan(ScanOptions())
         AssistsWindowManager.showTop()
-        return request.createResponse(0, data = JsonObject().apply {
-            addProperty("value", scanIntentResult?.contents ?: "")
-        })
+        val value = scanIntentResult?.contents
+        return if (value == null) {
+            request.createResponse(
+                -1,
+                data = JsonObject().apply { addProperty("value", "") },
+                message = "Scan cancelled"
+            )
+        } else {
+            request.createResponse(0, data = JsonObject().apply { addProperty("value", value) })
+        }
     }
 
     private suspend fun handleTakeScreenshot(request: CallRequest<JsonObject>): CallResponse<Any?> {
@@ -714,21 +737,39 @@ class ASJavascriptInterfaceAsync(val webView: WebView) {
     private suspend fun handlePerformLinearGesture(request: CallRequest<JsonObject>): CallResponse<Any?> {
         val startPoint = request.arguments?.get("startPoint")?.asJsonObject ?: JsonObject()
         val endPoint = request.arguments?.get("endPoint")?.asJsonObject ?: JsonObject()
+        val duration = request.arguments?.get("duration")?.asLong ?: 1000
+        val switchWindowIntervalDelay = request.arguments?.get("switchWindowIntervalDelay")?.asLong ?: 250
+        LogUtils.i(
+            "[GestureDiag] performLinearGesture entry start=(${startPoint.get("x").asFloat},${startPoint.get("y").asFloat}) " +
+                "end=(${endPoint.get("x").asFloat},${endPoint.get("y").asFloat}) duration=$duration switchDelay=$switchWindowIntervalDelay " +
+                "service=${AssistsService.getOrNull() != null}",
+        )
         val path = Path()
         path.moveTo(startPoint.get("x").asFloat, startPoint.get("y").asFloat)
         path.lineTo(endPoint.get("x").asFloat, endPoint.get("y").asFloat)
-        val switchWindowIntervalDelay = request.arguments?.get("switchWindowIntervalDelay")?.asLong ?: 250
-        AssistsWindowManager.nonTouchableByAll()
-        delay(switchWindowIntervalDelay)
-        val result =
-            AssistsCore.gesture(path = path, startTime = 0, duration = request.arguments?.get("duration")?.asLong ?: 1000)
-        AssistsWindowManager.touchableByAll()
-        return request.createResponse(if (result) 0 else -1, data = result)
+        try {
+            AssistsWindowManager.nonTouchableByAll()
+            delay(switchWindowIntervalDelay)
+            LogUtils.i("[GestureDiag] nonTouchable done, dispatch gesture")
+            val result =
+                AssistsCore.gesture(path = path, startTime = 0, duration = duration)
+            LogUtils.i("[GestureDiag] gesture returned=$result")
+            AssistsWindowManager.touchableByAll()
+            LogUtils.i("[GestureDiag] touchable done, respond code=${if (result) 0 else -1}")
+            return request.createResponse(if (result) 0 else -1, data = result)
+        } catch (e: Throwable) {
+            LogUtils.e("[GestureDiag] performLinearGesture exception: ${e.message}", e)
+            throw e
+        }
     }
 
     private fun handleGetAppScreenSize(request: CallRequest<JsonObject>): CallResponse<Any?> {
         val bounds = AssistsCore.getAppBoundsInScreen()?.toBounds()
-        return request.createResponse(0, data = bounds)
+        return if (bounds == null) {
+            request.createResponse(-1, data = null, message = "App bounds unavailable")
+        } else {
+            request.createResponse(0, data = bounds)
+        }
     }
 
     private fun handleGetScreenSize(request: CallRequest<JsonObject>): CallResponse<Any?> {
@@ -740,7 +781,9 @@ class ASJavascriptInterfaceAsync(val webView: WebView) {
 
     private suspend fun handleClickByGesture(request: CallRequest<JsonObject>): CallResponse<Any?> {
         val switchWindowIntervalDelay = request.arguments?.get("switchWindowIntervalDelay")?.asLong ?: 250
-        val clickDuration = request.arguments?.get("clickDuration")?.asLong ?: 25
+        val clickDuration = request.arguments?.get("duration")?.asLong
+            ?: request.arguments?.get("clickDuration")?.asLong
+            ?: 25
         AssistsWindowManager.nonTouchableByAll()
         delay(switchWindowIntervalDelay)
         val result =
@@ -781,22 +824,30 @@ class ASJavascriptInterfaceAsync(val webView: WebView) {
         val x = (bounds?.centerX()?.toFloat() ?: 0f) + offsetX
         val y = (bounds?.centerY()?.toFloat() ?: 0f) + offsetY
 
-        AssistsCore.gestureClick(x, y, clickDuration)
+        val first = AssistsCore.gestureClick(x, y, clickDuration)
         delay(clickInterval)
-        AssistsCore.gestureClick(x, y, clickDuration)
+        val second = AssistsCore.gestureClick(x, y, clickDuration)
         AssistsWindowManager.touchableByAll()
-
-        return request.createResponse(0, data = true)
+        val ok = first && second
+        return request.createResponse(if (ok) 0 else -1, data = ok)
     }
 
     private fun handleGetBoundsInParent(request: CallRequest<JsonObject>): CallResponse<Any?> {
         val bounds = NodeCacheManager.get(request.node?.nodeId ?: "")?.getBoundsInParent()?.toBounds()
-        return request.createResponse(0, data = bounds)
+        return if (bounds == null) {
+            request.createResponse(-1, data = null, message = "Node not found")
+        } else {
+            request.createResponse(0, data = bounds)
+        }
     }
 
     private fun handleGetBoundsInScreen(request: CallRequest<JsonObject>): CallResponse<Any?> {
         val bounds = NodeCacheManager.get(request.node?.nodeId ?: "")?.getBoundsInScreen()?.toBounds()
-        return request.createResponse(0, data = bounds)
+        return if (bounds == null) {
+            request.createResponse(-1, data = null, message = "Node not found")
+        } else {
+            request.createResponse(0, data = bounds)
+        }
     }
 
     private fun handleIsVisible(request: CallRequest<JsonObject>): CallResponse<Any?> {
@@ -833,16 +884,27 @@ class ASJavascriptInterfaceAsync(val webView: WebView) {
 
             return@letRoot node.isVisibleToUser
         }
-        return request.createResponse(0, data = value)
+        if (value == null) {
+            return request.createResponse(-1, data = false, message = "Node not found")
+        }
+        return request.createResponse(if (value) 0 else -1, data = value)
     }
 
     private fun handleGetAllText(request: CallRequest<JsonObject>): CallResponse<Any?> {
-        val texts = NodeCacheManager.get(request.node?.nodeId ?: "")?.getAllText()
+        val nodeId = request.node?.nodeId ?: ""
+        val texts = if (nodeId.isEmpty()) {
+            val scope = NodeLookupScopeParse.fromArguments(request.arguments)
+            val collected = arrayListOf<String>()
+            AssistsCore.getAllNodes(scope = scope).forEach { collected.addAll(it.getAllText()) }
+            collected
+        } else {
+            NodeCacheManager.get(nodeId)?.getAllText() ?: arrayListOf()
+        }
         return request.createResponse(0, data = texts)
     }
 
     private fun handleGetChildren(request: CallRequest<JsonObject>): CallResponse<Any?> {
-        val nodes = NodeCacheManager.get(request.node?.nodeId ?: "")?.getChildren()?.toNodes()
+        val nodes = NodeCacheManager.get(request.node?.nodeId ?: "")?.getChildren()?.toNodes() ?: emptyList()
         return request.createResponse(0, data = nodes)
     }
 
@@ -920,17 +982,17 @@ class ASJavascriptInterfaceAsync(val webView: WebView) {
         val selectionStart = request.arguments?.get("selectionStart")?.asInt ?: 0
         val selectionEnd = request.arguments?.get("selectionEnd")?.asInt ?: 0
         val isSuccess = NodeCacheManager.get(request.node?.nodeId ?: "")?.selectionText(selectionStart, selectionEnd) == true
-        return request.createResponse(0, data = isSuccess)
+        return request.createResponse(if (isSuccess) 0 else -1, data = isSuccess)
     }
 
     private fun handleScrollForward(request: CallRequest<JsonObject>): CallResponse<Any?> {
         val isSuccess = NodeCacheManager.get(request.node?.nodeId ?: "")?.scrollForward() == true
-        return request.createResponse(0, data = isSuccess)
+        return request.createResponse(if (isSuccess) 0 else -1, data = isSuccess)
     }
 
     private fun handleScrollBackward(request: CallRequest<JsonObject>): CallResponse<Any?> {
         val isSuccess = NodeCacheManager.get(request.node?.nodeId ?: "")?.scrollBackward() == true
-        return request.createResponse(0, data = isSuccess)
+        return request.createResponse(if (isSuccess) 0 else -1, data = isSuccess)
     }
 
     private fun handleFindByTextAllMatch(request: CallRequest<JsonObject>): CallResponse<Any?> {
@@ -943,9 +1005,15 @@ class ASJavascriptInterfaceAsync(val webView: WebView) {
     }
 
     private fun handleContainsText(request: CallRequest<JsonObject>): CallResponse<Any?> {
-        val isSuccess =
-            NodeCacheManager.get(request.node?.nodeId ?: "")?.containsText(request.arguments?.get("text")?.asString ?: "") == true
-        return request.createResponse(0, data = isSuccess)
+        val textArg = request.arguments?.get("text")?.asString ?: ""
+        val nodeId = request.node?.nodeId ?: ""
+        val isSuccess = if (nodeId.isEmpty()) {
+            val scope = NodeLookupScopeParse.fromArguments(request.arguments)
+            AssistsCore.findByText(textArg, scope = scope).isNotEmpty()
+        } else {
+            NodeCacheManager.get(nodeId)?.containsText(textArg) == true
+        }
+        return request.createResponse(if (isSuccess) 0 else -1, data = isSuccess)
     }
 
     private fun handleFindFirstParentByTags(request: CallRequest<JsonObject>): CallResponse<Any?> {
@@ -956,7 +1024,7 @@ class ASJavascriptInterfaceAsync(val webView: WebView) {
     }
 
     private fun handleGetNodes(request: CallRequest<JsonObject>): CallResponse<Any?> {
-        val nodes = NodeCacheManager.get(request.node?.nodeId ?: "")?.getNodes()?.toNodes()
+        val nodes = NodeCacheManager.get(request.node?.nodeId ?: "")?.getNodes()?.toNodes() ?: emptyList()
         return request.createResponse(0, data = nodes)
     }
 
@@ -968,33 +1036,33 @@ class ASJavascriptInterfaceAsync(val webView: WebView) {
     private fun handleSetNodeText(request: CallRequest<JsonObject>): CallResponse<Any?> {
         val isSuccess =
             NodeCacheManager.get(request.node?.nodeId ?: "")?.setNodeText(request.arguments?.get("text")?.asString ?: "") == true
-        return request.createResponse(0, data = isSuccess)
+        return request.createResponse(if (isSuccess) 0 else -1, data = isSuccess)
     }
 
     private fun handleClick(request: CallRequest<JsonObject>): CallResponse<Any?> {
         val isSuccess = NodeCacheManager.get(request.node?.nodeId ?: "")?.click() == true
-        return request.createResponse(0, data = isSuccess)
+        return request.createResponse(if (isSuccess) 0 else -1, data = isSuccess)
     }
 
     private fun handleLongClick(request: CallRequest<JsonObject>): CallResponse<Any?> {
         val isSuccess = NodeCacheManager.get(request.node?.nodeId ?: "")?.longClick() == true
-        return request.createResponse(0, data = isSuccess)
+        return request.createResponse(if (isSuccess) 0 else -1, data = isSuccess)
     }
 
     private fun handlePaste(request: CallRequest<JsonObject>): CallResponse<Any?> {
         val isSuccess = NodeCacheManager.get(request.node?.nodeId ?: "")?.paste(request.arguments?.get("text")?.asString ?: "") == true
-        return request.createResponse(0, data = isSuccess)
+        return request.createResponse(if (isSuccess) 0 else -1, data = isSuccess)
     }
 
     private fun handleFocus(request: CallRequest<JsonObject>): CallResponse<Any?> {
         val isSuccess = NodeCacheManager.get(request.node?.nodeId ?: "")?.focus() == true
-        return request.createResponse(0, data = isSuccess)
+        return request.createResponse(if (isSuccess) 0 else -1, data = isSuccess)
     }
 
     private suspend fun handleLaunchApp(request: CallRequest<JsonObject>): CallResponse<Any?> {
         val packageName = request.arguments?.get("packageName")?.asString ?: ""
-        AssistsCore.launchApp(packageName)
-        return request.createResponse(0, data = true)
+        val ok = AssistsCore.launchApp(packageName)
+        return request.createResponse(if (ok) 0 else -1, data = ok)
     }
 
     private fun handleGetPackageName(request: CallRequest<JsonObject>): CallResponse<Any?> {
@@ -1005,22 +1073,22 @@ class ASJavascriptInterfaceAsync(val webView: WebView) {
 
     private fun handleBack(request: CallRequest<JsonObject>): CallResponse<Any?> {
         val resultBack = AssistsCore.back()
-        return request.createResponse(0, data = resultBack)
+        return request.createResponse(if (resultBack) 0 else -1, data = resultBack)
     }
 
     private fun handleHome(request: CallRequest<JsonObject>): CallResponse<Any?> {
         val resultBack = AssistsCore.home()
-        return request.createResponse(0, data = resultBack)
+        return request.createResponse(if (resultBack) 0 else -1, data = resultBack)
     }
 
     private fun handleNotifications(request: CallRequest<JsonObject>): CallResponse<Any?> {
         val resultBack = AssistsCore.notifications()
-        return request.createResponse(0, data = resultBack)
+        return request.createResponse(if (resultBack) 0 else -1, data = resultBack)
     }
 
     private fun handleRecentApps(request: CallRequest<JsonObject>): CallResponse<Any?> {
         val resultBack = AssistsCore.recentApps()
-        return request.createResponse(0, data = resultBack)
+        return request.createResponse(if (resultBack) 0 else -1, data = resultBack)
     }
 
     private fun handleHttpRequest(request: CallRequest<JsonObject>): CallResponse<Any?> {
@@ -1178,6 +1246,43 @@ class ASJavascriptInterfaceAsync(val webView: WebView) {
                 addProperty("text", "")
             })
         }
+    }
+
+    private fun handleOverlayToast(request: CallRequest<JsonObject>): CallResponse<Any?> {
+        val text = request.arguments?.get("text")?.asString ?: ""
+        val delayMs = request.arguments?.get("delay")?.asLong ?: 2000L
+        text.overlayToast(delayMs)
+        return request.createResponse(0, data = true)
+    }
+
+    private fun handleIsAppInstalled(request: CallRequest<JsonObject>): CallResponse<Any?> {
+        val packageName = request.arguments?.get("packageName")?.asString ?: ""
+        val installed = AppUtils.isAppInstalled(packageName)
+        return request.createResponse(if (installed) 0 else -1, data = installed)
+    }
+
+    private fun handleKeepScreenOn(request: CallRequest<JsonObject>): CallResponse<Any?> {
+        val tip = request.arguments?.get("tip")?.asString ?: ""
+        AssistsCore.keepScreenOn(tip)
+        return request.createResponse(0, data = true)
+    }
+
+    private fun handleClearKeepScreenOn(request: CallRequest<JsonObject>): CallResponse<Any?> {
+        AssistsCore.clearKeepScreenOn()
+        return request.createResponse(0, data = true)
+    }
+
+    private suspend fun handleSetOverlayFlags(request: CallRequest<JsonObject>): CallResponse<Any?> {
+        val flagList = arrayListOf<Int>()
+        request.arguments?.get("flags")?.asJsonArray?.forEach {
+            flagList.add(it.asInt)
+        }
+        if (flagList.isEmpty()) {
+            return request.createResponse(-1, data = false, message = "flags required")
+        }
+        val flags = flagList.reduce { a, b -> a or b }
+        AssistsWindowManager.setFlags(flags)
+        return request.createResponse(0, data = true)
     }
 
     private fun bitmapToBase64(bitmap: Bitmap): String {

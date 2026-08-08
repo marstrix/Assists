@@ -121,7 +121,7 @@ open class ASWebView @JvmOverloads constructor(
                     }
 
                 }
-                var result = GsonUtils.toJson(CallResponse<Any>(code = -1))
+                var result = GsonUtils.toJson(CallResponse<Boolean>(code = 0, data = true))
 
                 callInterceptResult = CallInterceptResult(true, result)
             }
@@ -135,7 +135,7 @@ open class ASWebView @JvmOverloads constructor(
                         eventFilters.add(this)
                     }
                 }
-                var result = GsonUtils.toJson(CallResponse<Any>(code = -1))
+                var result = GsonUtils.toJson(CallResponse<Boolean>(code = 0, data = true))
 
                 callInterceptResult = CallInterceptResult(true, result)
             }
