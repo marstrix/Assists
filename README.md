@@ -36,7 +36,6 @@
 - [💝 支持开源](#-支持开源)
   - [⭐ Star支持](#-star支持)
   - [💰 赞助支持](#-赞助支持)
-- [Star History](#star-history)
 - [License](#license)
 
 </details>
@@ -195,10 +194,6 @@ dependencies {
 
 **感谢所有的支持者，得到你们的支持我将会更加完善开源库的能力！** 🚀
 
-## Star History
-
-[![Star History Chart][star-history-chart]][star-history-link]
-
 <div align="right">
 
 [![][back-to-top]](#readme-top)
@@ -236,7 +231,6 @@ Copyright © 2025 [ven-coder][profile-link]
 [api-reference]: https://github.com/ven-coder/assists/blob/master/API_REFERENCE.md
 [changelog]: CHANGELOG.md
 [afdian-link]: https://afdian.com/a/vencoder
-[star-history-link]: https://www.star-history.com/#ven-coder/assists&Date
 [star-history-chart]: https://api.star-history.com/svg?repos=ven-coder/assists&type=Date
 [tutorial-appium]: https://juejin.cn/post/7483409317564907530
 [tutorial-weditor]: https://juejin.cn/post/7484188555735613492
