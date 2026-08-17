@@ -169,7 +169,7 @@ dependencies {
 
 | QQ交流群 | 微信群 | 作者微信 |
 |:------:|:------:|:--------:|
-| <img src="https://github.com/ven-coder/assists/blob/master/images/qq-group-code.png" width="200" /> | <img src="images/wechat-group.jpg" width="200" /> | <img src="https://github.com/user-attachments/assets/49378ec3-71a2-4a5e-8510-bec4ec8d915e" width="200" /> |
+| <img src="https://github.com/ven-coder/assists/blob/master/images/qq-group-code.png" width="200" /> | <img src="images/wechat-group.png" width="200" /> | <img src="https://github.com/user-attachments/assets/49378ec3-71a2-4a5e-8510-bec4ec8d915e" width="200" /> |
 
 微信群二维码过期请加作者邀请加入
 
