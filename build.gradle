@@ -9,8 +9,8 @@ buildscript {
         targetSdk = 36
 
         // 应用版本
-        versionCode = 39
-        versionName = "3.5.11"
+        versionCode = 40
+        versionName = "3.5.12"
         mavenVersion = "3.5.5"
         mavenGroupId = "io.github.ven-coder"
 
