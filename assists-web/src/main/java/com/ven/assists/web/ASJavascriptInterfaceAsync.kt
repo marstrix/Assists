@@ -354,6 +354,7 @@ class ASJavascriptInterfaceAsync(val webView: WebView) {
         val targetText = request.arguments?.get("targetText")?.asString ?: ""
         val rotationDegrees = request.arguments?.get("rotationDegrees")?.asInt ?: 0
         val overlayHiddenDelay = request.arguments?.get("overlayHiddenScreenshotDelayMillis")?.asLong ?: 250L
+        val hideOverlay = request.arguments?.get("hideOverlay")?.asBoolean ?: true
         val restoreOverlay = request.arguments?.get("restoreOverlay")?.asBoolean ?: true
 
         val regionJson = request.arguments?.get("region")?.asJsonObject
@@ -387,7 +388,7 @@ class ASJavascriptInterfaceAsync(val webView: WebView) {
             }
         }
 
-        if (restoreOverlay) {
+        if (hideOverlay) {
             AssistsWindowManager.temporarilyHideAll()
         }
         val recognitionResult = try {

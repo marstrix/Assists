@@ -5,6 +5,7 @@ import android.graphics.Bitmap
 import android.graphics.Rect
 import android.net.Uri
 import android.os.Build
+import android.util.Log
 import androidx.annotation.RequiresApi
 import com.google.android.gms.tasks.Task
 import com.google.mlkit.vision.common.InputImage
@@ -273,6 +274,7 @@ object TextRecognitionChineseLocator {
             findTargetPositions(recognizedText, targetText)
         }
         val duration = System.currentTimeMillis() - startTime
+        Log.d("TextRecognition", "processImage: image=${image.width}x${image.height}, textLen=${recognizedText.text.length}, blocks=${recognizedText.textBlocks.size}, targets=${positions.size}, duration=${duration}ms")
         RecognitionResult(
             fullText = recognizedText.text,
             targetPositions = positions,
@@ -286,6 +288,7 @@ object TextRecognitionChineseLocator {
             val recognizedText = recognizer.process(image).await()
             val positions = collectAllPositions(recognizedText)
             val duration = System.currentTimeMillis() - startTime
+            Log.d("TextRecognition", "processImageForAllPositions: image=${image.width}x${image.height}, textLen=${recognizedText.text.length}, blocks=${recognizedText.textBlocks.size}, positions=${positions.size}, duration=${duration}ms")
             AllTextPositionsResult(
                 fullText = recognizedText.text,
                 positions = positions,

@@ -6,7 +6,9 @@
 
 > 当前最新已发布标签：**v3.5.5**。以下为下一版本计划，正式发布前请勿当作已上线版本。
 
-（暂无）
+- **修复**：`AssistsCore.takeScreenshot` 截图成功后未 `close()` `HardwareBuffer`，高频调用后资源泄漏可诱发截图失败；`onFailure` 回调静默返回 null 无日志——改为打印 errorCode 并在 `finally` 中释放 `hardwareBuffer`
+- **修复**：OCR 识别前浮窗隐藏/恢复逻辑——`restoreOverlay` 参数同时门控隐藏与恢复，传 `false`（意图不恢复）会连隐藏也跳过导致截图含浮窗；拆分为 `hideOverlay`（门控隐藏，默认 `true`）与 `restoreOverlay`（门控恢复，默认 `true`）两个独立参数（涉及 `MlkitJavascriptInterface` 与 `ASJavascriptInterfaceAsync`）
+- **优化**：`TextRecognitionChineseLocator.processImage` / `processImageForAllPositions` 增加诊断日志（图片尺寸、识别文字长度、textBlocks 数、耗时），便于判断截图是否黑屏或无文字
 
 ---
 

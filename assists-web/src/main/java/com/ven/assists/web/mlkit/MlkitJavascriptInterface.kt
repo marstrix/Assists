@@ -103,9 +103,10 @@ class MlkitJavascriptInterface(val webView: WebView) {
         request: CallRequest<JsonObject>,
         block: suspend () -> CallResponse<JsonObject>
     ): CallResponse<JsonObject> {
+        val hideOverlay = request.arguments?.get("hideOverlay")?.asBoolean ?: true
         val restoreOverlay = request.arguments?.get("restoreOverlay")?.asBoolean ?: true
         val delayMillis = request.arguments?.get("overlayHiddenScreenshotDelayMillis")?.asLong ?: 250L
-        if (restoreOverlay) {
+        if (hideOverlay) {
             AssistsWindowManager.temporarilyHideAll()
         }
         delay(delayMillis)

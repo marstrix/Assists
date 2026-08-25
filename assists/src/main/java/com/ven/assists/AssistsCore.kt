@@ -1437,21 +1437,27 @@ object AssistsCore {
         val completableDeferred = CompletableDeferred<Bitmap?>()
         AssistsService.getOrNull()?.takeScreenshot(Display.DEFAULT_DISPLAY, Executors.newSingleThreadExecutor(), object : TakeScreenshotCallback {
             override fun onSuccess(screenshot: AccessibilityService.ScreenshotResult) {
-                Bitmap.wrapHardwareBuffer(
-                    screenshot.hardwareBuffer,
-                    screenshot.colorSpace
-                )?.let {
+                try {
+                    Bitmap.wrapHardwareBuffer(
+                        screenshot.hardwareBuffer,
+                        screenshot.colorSpace
+                    )?.let {
 
-                    // 转成软件 bitmap，调试器能查看
-                    val bitmap = it.copy(Bitmap.Config.ARGB_8888, false)
+                        // 转成软件 bitmap，调试器能查看
+                        val bitmap = it.copy(Bitmap.Config.ARGB_8888, false)
 
-                    completableDeferred.complete(bitmap)
-                } ?: let {
-                    completableDeferred.complete(null)
+                        completableDeferred.complete(bitmap)
+                    } ?: let {
+                        Log.e("AssistsCore", "takeScreenshot: wrapHardwareBuffer returned null")
+                        completableDeferred.complete(null)
+                    }
+                } finally {
+                    screenshot.hardwareBuffer.close()
                 }
             }
 
             override fun onFailure(errorCode: Int) {
+                Log.e("AssistsCore", "takeScreenshot failed, errorCode=$errorCode")
                 completableDeferred.complete(null)
             }
         })
