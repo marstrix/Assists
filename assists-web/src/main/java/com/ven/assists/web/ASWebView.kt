@@ -89,7 +89,7 @@ open class ASWebView @JvmOverloads constructor(
         var requestJson = json
 
         globalJavascriptCallIntercepts.forEach {
-            val interceptResult = it.invoke(json)
+            val interceptResult = it.invoke(requestJson)
             if (interceptResult.intercept) {
                 return@intercept interceptResult
             } else {
