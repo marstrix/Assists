@@ -7,6 +7,8 @@
 > 当前最新已发布版本：**3.5.7**。以下为下一版本计划，正式发布前请勿当作已上线版本。
 
 - **新增**：网页内可检查无障碍服务是否已开启，并可一键跳转到系统无障碍设置页面
+- **新增**：`ASWebView` 新增 `onMainFrameError` 扩展钩子——主 frame 加载失败（网络错误 + HTTP 4xx/5xx）统一汇聚回调；新增 `onPageStarted` 回调钩子。默认空实现，不改变既有行为，供子类（如 AssistsX `XWebview`）定制错误页
+- **新增**：Bridge 新增 `getCurrentAppInfo` 方法——JS 侧无需传包名即可获取宿主应用（当前 WebView 所在应用）自身信息，包括 `versionCode`/`versionName` 等（取自应用项目 `build.gradle`），同步接口 `ASJavascriptInterface` 与异步接口 `ASJavascriptInterfaceAsync` 均已支持
 
 ---
 

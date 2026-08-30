@@ -9,6 +9,9 @@ import android.view.accessibility.AccessibilityEvent
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.webkit.WebChromeClient
+import android.webkit.WebResourceError
+import android.webkit.WebResourceRequest
+import android.webkit.WebResourceResponse
 import com.blankj.utilcode.util.GsonUtils
 import com.blankj.utilcode.util.LogUtils
 import com.google.gson.JsonArray
@@ -82,6 +85,9 @@ open class ASWebView @JvmOverloads constructor(
     private val assistsLogEventScope = CoroutineScope(Dispatchers.Main + assistsLogEventSupervisor)
 
     var onReceivedTitle: ((title: String) -> Unit)? = null
+
+    /** 页面开始加载回调（WebViewClient.onPageStarted），URL 可能为 null（数据流页面） */
+    var onPageStarting: ((url: String?) -> Unit)? = null
 
     var callIntercept: ((json: String) -> CallInterceptResult)? = null
 
@@ -219,6 +225,19 @@ open class ASWebView @JvmOverloads constructor(
     }
 
 
+    /**
+     * 主 frame 加载失败回调（网络错误 + HTTP 错误统一汇聚）。
+     * 默认空实现不改变行为；子类（如 AssistsX 的 XWebview）可覆写以显示自定义错误页。
+     *
+     * @param failedUrl   失败的主页面 URL（可能为 null / 空）
+     * @param errorCode   WebViewClient.ERROR_CODE_* 常量或 HTTP 状态码
+     * @param description 错误描述
+     */
+    @Suppress("DEPRECATION")
+    protected open fun onMainFrameError(failedUrl: String?, errorCode: Int, description: String) {
+        // no-op：默认不改变开源行为
+    }
+
     init {
         // 初始化WebView设置
         settings.apply {
@@ -242,6 +261,58 @@ open class ASWebView @JvmOverloads constructor(
 
         // 设置WebViewClient
         webViewClient = object : WebViewClient() {
+
+            // API 23+：主 frame 网络错误
+            override fun onReceivedError(
+                view: WebView?,
+                request: WebResourceRequest?,
+                error: WebResourceError?,
+            ) {
+                super.onReceivedError(view, request, error)
+                if (request?.isForMainFrame == true) {
+                    onMainFrameError(
+                        request.url?.toString(),
+                        error?.errorCode ?: -1,
+                        error?.description?.toString() ?: "",
+                    )
+                }
+            }
+
+            // API < 23：主 frame 网络错误（failingUrl 非空即为主 frame）
+            @Suppress("DEPRECATION")
+            override fun onReceivedError(
+                view: WebView?,
+                errorCode: Int,
+                description: String?,
+                failingUrl: String?,
+            ) {
+                super.onReceivedError(view, errorCode, description, failingUrl)
+                if (!failingUrl.isNullOrBlank()) {
+                    onMainFrameError(failingUrl, errorCode, description ?: "")
+                }
+            }
+
+            // API 23+：HTTP 4xx/5xx
+            override fun onReceivedHttpError(
+                view: WebView?,
+                request: WebResourceRequest?,
+                errorResponse: WebResourceResponse?,
+            ) {
+                super.onReceivedHttpError(view, request, errorResponse)
+                if (request?.isForMainFrame == true && errorResponse != null) {
+                    onMainFrameError(
+                        request.url?.toString(),
+                        errorResponse.statusCode,
+                        "HTTP ${errorResponse.statusCode}",
+                    )
+                }
+            }
+
+            override fun onPageStarted(view: WebView?, url: String?, favicon: android.graphics.Bitmap?) {
+                super.onPageStarted(view, url, favicon)
+                onPageStarting?.invoke(url)
+            }
+
             override fun onPageFinished(view: WebView?, url: String?) {
                 super.onPageFinished(view, url)
                 // 注入辅助函数到JS环境
