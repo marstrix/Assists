@@ -27,6 +27,7 @@ import com.ven.assists.web.filesystem.fileio.FileIOJavascriptInterface
 import com.ven.assists.web.filesystem.fileutils.FileUtilsJavascriptInterface
 import com.ven.assists.web.gallery.GalleryJavascriptInterface
 import com.ven.assists.web.network.HttpJavascriptInterface
+import com.ven.assists.web.accessibility.A11yJavascriptInterface
 import com.ven.assists.web.ime.ImeJavascriptInterface
 import com.ven.assists.web.imageutils.ImageUtilsJavascriptInterface
 import com.ven.assists.web.mlkit.MlkitJavascriptInterface
@@ -158,6 +159,7 @@ open class ASWebView @JvmOverloads constructor(
     val fileUtilsJavascriptInterface = FileUtilsJavascriptInterface(webView = this)
     val httpJavascriptInterface = HttpJavascriptInterface(webView = this)
     val imeJavascriptInterface = ImeJavascriptInterface(webView = this)
+    val a11yJavascriptInterface = A11yJavascriptInterface(webView = this)
     val imageUtilsJavascriptInterface = ImageUtilsJavascriptInterface(webView = this)
     val mlkitJavascriptInterface = MlkitJavascriptInterface(webView = this)
     val galleryJavascriptInterface = GalleryJavascriptInterface(webView = this)
@@ -266,6 +268,7 @@ open class ASWebView @JvmOverloads constructor(
         addJavascriptInterface(fileUtilsJavascriptInterface, "assistsxFileUtils")
         addJavascriptInterface(httpJavascriptInterface, "assistsxHttp")
         addJavascriptInterface(imeJavascriptInterface, "assistsxIme")
+        addJavascriptInterface(a11yJavascriptInterface, "assistsxA11y")
         addJavascriptInterface(imageUtilsJavascriptInterface, "assistsxImageUtils")
         addJavascriptInterface(mlkitJavascriptInterface, "assistsxMlkit")
         addJavascriptInterface(galleryJavascriptInterface, "assistsxGallery")
