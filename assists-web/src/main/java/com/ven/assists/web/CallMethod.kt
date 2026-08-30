@@ -64,6 +64,9 @@ object CallMethod {
     const val getAndroidID = "getAndroidID"
     const val getUniqueDeviceId = "getUniqueDeviceId"
 
+    /** 获取当前宿主应用自身信息（版本号/版本名称等，取自当前应用 build.gradle） */
+    const val getCurrentAppInfo = "getCurrentAppInfo"
+
     const val setAccessibilityEventFilters = "setAccessibilityEventFilters"
 
     const val addAccessibilityEventFilter = "addAccessibilityEventFilter"

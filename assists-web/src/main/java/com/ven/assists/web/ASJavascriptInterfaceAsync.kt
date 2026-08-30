@@ -160,6 +160,8 @@ class ASJavascriptInterfaceAsync(val webView: WebView) {
 
                 CallMethod.getAppInfo -> handleGetAppInfo(request)
 
+                CallMethod.getCurrentAppInfo -> handleGetCurrentAppInfo(request)
+
                 CallMethod.scanQR -> handleScanQR(request)
 
 
@@ -532,6 +534,19 @@ class ASJavascriptInterfaceAsync(val webView: WebView) {
         val packageName = request.arguments?.get("packageName")?.asString ?: ""
         return runCatching<CallResponse<Any?>> {
             val appInfo = AppUtils.getAppInfo(packageName)
+            if (appInfo == null) {
+                request.createResponse(-1, data = JsonObject(), message = "App not found")
+            } else {
+                request.createResponse(0, data = appInfo)
+            }
+        }.getOrElse {
+            request.createResponse(-1, data = JsonObject(), message = it.message)
+        }
+    }
+
+    private fun handleGetCurrentAppInfo(request: CallRequest<JsonObject>): CallResponse<Any?> {
+        return runCatching<CallResponse<Any?>> {
+            val appInfo = AppUtils.getAppInfo()
             if (appInfo == null) {
                 request.createResponse(-1, data = JsonObject(), message = "App not found")
             } else {

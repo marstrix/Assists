@@ -312,6 +312,20 @@ class ASJavascriptInterface(val webView: WebView) {
                     }))
                 }
 
+                CallMethod.getCurrentAppInfo -> {
+                    CoroutineWrapper.launch {
+                        runCatching {
+                            val appInfo = AppUtils.getAppInfo()
+                            callback(CallResponse(code = 0, data = appInfo, callbackId = request.callbackId))
+                        }.onFailure {
+                            callback(CallResponse(code = -1, data = JsonObject(), callbackId = request.callbackId, message = it.message))
+                        }
+                    }
+                    result = GsonUtils.toJson(CallResponse<JsonObject>(code = 0, data = JsonObject().apply {
+                        addProperty("resultType", "callback")
+                    }))
+                }
+
                 // 已过期：请改用 assistsxFloat.open；保留分支以兼容旧插件
                 @Suppress("DEPRECATION")
                 CallMethod.loadWebViewOverlay -> {
