@@ -218,7 +218,7 @@ class FloatJsInterface(val webView: WebView) {
             initialCenterVertical = boolArg(args, "centerVertical", "initialCenterVertical") ?: false,
             keepScreenOn = args?.get("keepScreenOn")?.asBoolean ?: false,
             showTopOperationArea = args?.get("showTopOperationArea")?.asBoolean ?: true,
-            showBottomOperationArea = args?.get("showBottomOperationArea")?.asBoolean ?: false,
+            showBottomOperationArea = args?.get("showBottomOperationArea")?.asBoolean ?: true,
             backgroundColor = FloatWindowOpener.parseBackgroundColor(args?.get("backgroundColor")),
         )
         val added = runMain {

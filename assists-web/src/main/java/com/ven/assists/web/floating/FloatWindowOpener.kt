@@ -38,7 +38,7 @@ data class FloatWindowOpenOptions(
     val initialCenterVertical: Boolean = false,
     val keepScreenOn: Boolean = false,
     val showTopOperationArea: Boolean = true,
-    val showBottomOperationArea: Boolean = false,
+    val showBottomOperationArea: Boolean = true,
     val backgroundColor: Int? = null,
 )
 
